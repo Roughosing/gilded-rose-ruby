@@ -1,5 +1,8 @@
 *A practice refactoring of the Gilded Rose kata, with the steps written down along the way.*
 
+[![Ruby](https://img.shields.io/badge/ruby-3.3-CC342D?logo=ruby&logoColor=white)](https://www.ruby-lang.org/)
+[![Tests](https://github.com/Roughosing/gilded-rose-ruby/actions/workflows/tests.yml/badge.svg)](https://github.com/Roughosing/gilded-rose-ruby/actions/workflows/tests.yml)
+
 # Gilded Rose Requirements Specification
 
 Hi and welcome to team Gilded Rose. As you know, we are a small inn with a prime location in a
