@@ -16,4 +16,4 @@ jobs:
           working-directory: ruby
       - name: Run tests
         working-directory: ruby
-        run: bundle exec rspec ruby/gilded_rose_spec.rb
+        run: bundle exec rspec gilded_rose_spec.rb
