@@ -1,5 +1,5 @@
 class ItemUpdaterFactory
-  ITEM_UPDATER_NAMES = {
+  UPDATER_CLASSES = {
     "Aged Brie" => AgedBrieUpdater,
     "Backstage passes to a TAFKAL80ETC concert" => BackstagePassesUpdater,
     "Sulfuras, Hand of Ragnaros" => SulfurasUpdater
@@ -8,7 +8,7 @@ class ItemUpdaterFactory
   CONJURED_PREFIX = "Conjured"
 
   def self.build(item)
-    ITEM_UPDATER_NAMES.fetch(item.name) {
+    UPDATER_CLASSES.fetch(item.name) {
       item.name.start_with?(CONJURED_PREFIX) ? ConjuredUpdater : NormalItemUpdater
     }.new(item)
   end

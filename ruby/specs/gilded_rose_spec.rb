@@ -1,6 +1,6 @@
 require 'rspec'
 
-require_relative 'gilded_rose'
+require_relative '../gilded_rose'
 
 # Same cases as Sandi Metz's RailsConf 2014 suite:
 # https://gist.github.com/skmetz/7772668

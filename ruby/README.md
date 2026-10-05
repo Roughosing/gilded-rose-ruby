@@ -5,5 +5,11 @@
 From the repository root, with RSpec installed:
 
 ```
-rspec ruby/gilded_rose_spec.rb
+rspec ruby
+```
+
+## Print a sample inventory
+
+```
+ruby ruby/texttest_fixture.rb 10
 ```

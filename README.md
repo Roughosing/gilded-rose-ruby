@@ -255,6 +255,10 @@ class ItemUpdater
   QUALITY_MAX = 50
   QUALITY_MIN = 0
 
+  def initialize(item)
+    @item = item
+  end
+
   def update_item
     raise NotImplementedError, "#{self.class} must implement update_item"
   end
@@ -283,6 +287,8 @@ class ItemUpdater
 end
 ```
 
+`initialize` keeps the `Item` that already exists. Every helper below changes that same object, which is why the tests can read `sell_in` and `quality` back off the original record.
+
 The early return in `increase_quality` matters. It leaves a quality that is already past `50` untouched, then the `min` / `max` stop a larger step from walking through the bound. Quality `49` with five days left becomes `50`, not `54`. An expired normal item at quality `1` becomes `0`, not `-1`. The per-point checks in the first extract were doing that job. The helper does it now, so a day's change can be one number.
 
 These handlers all respond to `update_item`. That is the polymorphism. The shared helpers are where the cap and the floor live, so those checks are not copied into every handler. Each handler still owns its own rule, and backstage passes still touch `@item` for the sell-in bands and the post-concert reset.
@@ -295,19 +301,19 @@ Next we need to manage how these handlers get chosen. `ItemUpdaterFactory` does 
 
 ```ruby
 class ItemUpdaterFactory
-  ITEM_UPDATER_NAMES = {
+  UPDATER_CLASSES = {
     "Aged Brie" => AgedBrieUpdater,
     "Backstage passes to a TAFKAL80ETC concert" => BackstagePassesUpdater,
     "Sulfuras, Hand of Ragnaros" => SulfurasUpdater
   }.freeze
 
   def self.build(item)
-    ITEM_UPDATER_NAMES.fetch(item.name, NormalItemUpdater).new(item)
+    UPDATER_CLASSES.fetch(item.name, NormalItemUpdater).new(item)
   end
 end
 ```
 
-Here we have a constant with the name-to-handler mappings, and `fetch` builds the handler. Adding another custom item is one line in `ITEM_UPDATER_NAMES`, plus its `update_item`. Anything we don't recognise stays a `NormalItemUpdater`. This makes the change easy, so we can make the easy change.
+Here we have a constant whose values are the handler classes. `fetch` selects the class; `.new(item)` builds the handler. Adding another custom item is one line in `UPDATER_CLASSES`, plus its `update_item`. Anything we don't recognise stays a `NormalItemUpdater`. This makes the change easy, so we can make the easy change.
 
 ### 7. What `GildedRose` looks like now
 
@@ -389,7 +395,7 @@ In the factory, the hash of item names stays as it was. The new part is the `fet
 CONJURED_PREFIX = "Conjured"
 
 def self.build(item)
-  ITEM_UPDATER_NAMES.fetch(item.name) {
+  UPDATER_CLASSES.fetch(item.name) {
     item.name.start_with?(CONJURED_PREFIX) ? ConjuredUpdater : NormalItemUpdater
   }.new(item)
 end
