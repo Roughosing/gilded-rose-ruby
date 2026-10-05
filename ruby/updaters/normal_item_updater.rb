@@ -1,4 +1,4 @@
-class NormalItem < ItemUpdater
+class NormalItemUpdater < ItemUpdater
   QUALITY_DECREMENT_ON_EXPIRATION = 2
 
   def update_item

@@ -1,4 +1,4 @@
-class AgedBrie < ItemUpdater
+class AgedBrieUpdater < ItemUpdater
   def update_item
     decrease_sell_in
     increase_quality(quality_increase_step)
@@ -7,6 +7,6 @@ class AgedBrie < ItemUpdater
   private
 
   def quality_increase_step
-    expired? ? QUALITY_STEP * 2 : QUALITY_STEP
+    expired? ? 2 : 1
   end
 end

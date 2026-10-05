@@ -1,4 +1,4 @@
-class BackstagePasses < ItemUpdater
+class BackstagePassesUpdater < ItemUpdater
   SELL_IN_5_DAYS = 5
   SELL_IN_10_DAYS = 10
   QUALITY_INCREMENT_ON_5_DAYS = 3

@@ -1,4 +1,4 @@
-class Conjured < ItemUpdater
+class ConjuredUpdater < ItemUpdater
   QUALITY_DECREMENT = 2
   QUALITY_DECREMENT_ON_EXPIRATION = 4
 

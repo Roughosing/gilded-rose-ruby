@@ -122,7 +122,7 @@ def update_backstage_passes(item)
 end
 ```
 
-Immediately it becomes easier to see how each item handles its own quality update. Backstage passes are the awkward one. The increases stack, so inside 10 days you add a second point, and inside 5 days you add a third. An `if` / `elsif` chain won't do that on its own. So, here we have the functionality for each of the items, laid out clearly and much easier to understand what's going on. But we don't stop here. We make sure the tests still pass, and then it's on to our next refactoring.
+Immediately it becomes easier to see how each item handles its own quality update. Backstage passes are the awkward one. The increases stack, so inside 10 days you add a second point, and inside 5 days you add a third. An `if` / `elsif` chain won't do that on its own. This version can also walk past 50. The early return only skips the update when quality is already 50, so a pass at 49 with five days left becomes 52. The cap tests fail on this snippet. `increase_quality`, added later, is what stops a step from crossing 50. The shape is clearer, and then the tests go back to green.
 
 But we still have update how we select what item method to use, let's start with a case statement:
 
@@ -148,20 +148,20 @@ This doesn't look so bad now, but we still have some magic strings, numbers, pri
 To combat the bloated case statement, look at the items and how they actually behave. They don't change. Each special item has its own fixed behaviour, and you can identify it by name. Unless of course it's a normal item, in which case we just default anything we haven't named. So what we do here is turn this into an OOP refactor, and extract those rules into their own classes:
 
 ```ruby
-class AgedBrie
+class AgedBrieUpdater
 end
 
-class BackstagePasses
+class BackstagePassesUpdater
 end
 
-class Sulfuras
+class SulfurasUpdater
 end
 
-class NormalItem
+class NormalItemUpdater
 end
 ```
 
-Right now, you might be thinking the best way forward is to make all of these a subclass of `Item`, so we could initialise an Aged Brie as `AgedBrie.new(sell_in: x, quality: 5)`. That isn't a bad first thought, but it would be a behavioural change. Our tests instantiate items like `Item.new('Aged Brie', 3, 10)`, then read `sell_in` and `quality` back off that same object. `AgedBrie.new` is a different object. Update the copy and the original `Item` just sits there, and the suite goes red. The goblin in the requirements also doesn't want us altering `Item`. It stays the record: `name`, `sell_in`, `quality`, and `to_s`.
+Right now, you might be thinking the best way forward is to make all of these a subclass of `Item`, so we could initialise an Aged Brie as `AgedBrieUpdater.new(sell_in: x, quality: 5)`. That isn't a bad first thought, but it would be a behavioural change. Our tests instantiate items like `Item.new('Aged Brie', 3, 10)`, then read `sell_in` and `quality` back off that same object. `AgedBrieUpdater.new` is a different object. Update the copy and the original `Item` just sits there, and the suite goes red. The goblin in the requirements also doesn't want us altering `Item`. It stays the record: `name`, `sell_in`, `quality`, and `to_s`.
 
 We're focussed on structural changes for this pass. So we extract the behaviour into the new classes, create one object for the common update logic, and use the Factory Pattern to build the handlers. The handler wraps the `Item` we already have and updates that.
 
@@ -173,7 +173,7 @@ Using extract method on the line every item shares:
 
 `item.sell_in -= 1` -> `decrease_sell_in`
 
-The quality updates are the same extract. That is what clears the feature envy. The handler stops poking `item.quality` on each line and asks for the operation:
+The quality updates are the same extract. That gathers the repeated `item.quality` tweaks into one place. It does not clear feature envy. Backstage passes still read `@item.sell_in` to choose a band, and they still write `@item.quality` when the concert is over. The handler asks for the operation:
 
 `item.quality -= 1` -> `decrease_quality`
 
@@ -181,7 +181,7 @@ The quality updates are the same extract. That is what clears the feature envy. 
 
 `item.sell_in < 0` -> `expired?`
 
-What is left are the raw numbers. Naming them deals with the magic numbers and the primitive obsession in the same pass. A `10` is a sell-in band, and a `2` is "twice as fast after sell_in data", once they have names:
+What is left are the raw numbers. The ones worth naming are the domain rules: the cap at `50`, the floor at `0`, the 10-day and 5-day bands, and degrading twice as fast. A constant for every `1` does not explain anything. The item is still a name string and two integers, and the factory still matches on those strings, so the magic names are smaller, not gone.
 
 `50` -> `QUALITY_MAX`
 
@@ -191,14 +191,12 @@ What is left are the raw numbers. Naming them deals with the magic numbers and t
 
 `2` -> `QUALITY_DECREMENT_ON_EXPIRATION`
 
-etc.
-
-Now we'll start to have something like this. `increase_quality` returns when quality is already `50` or higher, so an increase never walks past the cap and never pulls a value above `50` down to it. `decrease_quality` only stops at `0`, so a normal item already above `50` still loses quality. Sulfuras stays at `80` because it does not override `update_item`, and the empty method on `ItemUpdater` is the whole rule.
+Now we'll start to have something like this. `increase_quality` returns when quality is already `50` or higher, so an increase never walks past the cap and never pulls a value above `50` down to it. `decrease_quality` only stops at `0`, so a normal item already above `50` still loses quality. Sulfuras stays at `80` because `SulfurasUpdater#update_item` does nothing. `ItemUpdater#update_item` raises `NotImplementedError`, so a new handler cannot inherit that silence by accident.
 
 So the handlers look like this:
 
 ```ruby
-class AgedBrie < ItemUpdater
+class AgedBrieUpdater < ItemUpdater
   def update_item
     decrease_sell_in
     increase_quality(quality_increase_step)
@@ -207,11 +205,11 @@ class AgedBrie < ItemUpdater
   private
 
   def quality_increase_step
-    expired? ? QUALITY_STEP * 2 : QUALITY_STEP
+    expired? ? 2 : 1
   end
 end
 
-class BackstagePasses < ItemUpdater
+class BackstagePassesUpdater < ItemUpdater
   SELL_IN_5_DAYS = 5
   SELL_IN_10_DAYS = 10
   QUALITY_INCREMENT_ON_5_DAYS = 3
@@ -233,10 +231,12 @@ class BackstagePasses < ItemUpdater
   end
 end
 
-class Sulfuras < ItemUpdater
+class SulfurasUpdater < ItemUpdater
+  def update_item
+  end
 end
 
-class NormalItem < ItemUpdater
+class NormalItemUpdater < ItemUpdater
   QUALITY_DECREMENT_ON_EXPIRATION = 2
 
   def update_item
@@ -248,46 +248,44 @@ class NormalItem < ItemUpdater
 end
 ```
 
-And then `ItemUpdater`, which the above inherit from, and where the shared operations live looks likes this:
+And then `ItemUpdater`, which the above inherit from, and where the shared operations live looks like this:
 
 ```ruby
 class ItemUpdater
   QUALITY_MAX = 50
   QUALITY_MIN = 0
-  QUALITY_STEP = 1
-  SELL_IN_MIN = 0
-  SELL_IN_STEP = 1
 
   def update_item
+    raise NotImplementedError, "#{self.class} must implement update_item"
   end
 
   private
 
   def decrease_sell_in
-    @item.sell_in -= SELL_IN_STEP
+    @item.sell_in -= 1
   end
 
-  def increase_quality(step = QUALITY_STEP)
+  def increase_quality(step = 1)
     return if @item.quality >= QUALITY_MAX
 
     @item.quality = [@item.quality + step, QUALITY_MAX].min
   end
 
-  def decrease_quality(step = QUALITY_STEP)
+  def decrease_quality(step = 1)
     return if @item.quality <= QUALITY_MIN
 
     @item.quality = [@item.quality - step, QUALITY_MIN].max
   end
 
   def expired?
-    @item.sell_in < SELL_IN_MIN
+    @item.sell_in < 0
   end
 end
 ```
 
 The early return in `increase_quality` matters. It leaves a quality that is already past `50` untouched, then the `min` / `max` stop a larger step from walking through the bound. Quality `49` with five days left becomes `50`, not `54`. An expired normal item at quality `1` becomes `0`, not `-1`. The per-point checks in the first extract were doing that job. The helper does it now, so a day's change can be one number.
 
-So now these handlers take care of `update_item`. If you notice, they all respond to the same method, which is duck typing, the kind of polymorphism Ruby is happy with. The shared helpers are what kill the duplicated +1 / -1 / cap checks. Each handler owns one rule, and we've pulled the repeated actions up into `ItemUpdater`, so this bit is finally DRY too.
+These handlers all respond to `update_item`. That is the polymorphism. The shared helpers are where the cap and the floor live, so those checks are not copied into every handler. Each handler still owns its own rule, and backstage passes still touch `@item` for the sell-in bands and the post-concert reset.
 
 A new custom item is a new class. `GildedRose` doesn't grow another branch for it. The factory below still needs to learn the new name, and that's the one place you edit.
 
@@ -298,18 +296,18 @@ Next we need to manage how these handlers get chosen. `ItemUpdaterFactory` does 
 ```ruby
 class ItemUpdaterFactory
   ITEM_UPDATER_NAMES = {
-    "Aged Brie" => AgedBrie,
-    "Backstage passes to a TAFKAL80ETC concert" => BackstagePasses,
-    "Sulfuras, Hand of Ragnaros" => Sulfuras
+    "Aged Brie" => AgedBrieUpdater,
+    "Backstage passes to a TAFKAL80ETC concert" => BackstagePassesUpdater,
+    "Sulfuras, Hand of Ragnaros" => SulfurasUpdater
   }.freeze
 
   def self.build(item)
-    ITEM_UPDATER_NAMES.fetch(item.name, NormalItem).new(item)
+    ITEM_UPDATER_NAMES.fetch(item.name, NormalItemUpdater).new(item)
   end
 end
 ```
 
-Here we have a constant with the name-to-handler mappings, and `fetch` builds the handler. Adding another custom item is one line in `ITEM_UPDATER_NAMES`, plus its `update_item`. Anything we don't recognise stays a `NormalItem`. This makes the change easy, so we can make the easy change.
+Here we have a constant with the name-to-handler mappings, and `fetch` builds the handler. Adding another custom item is one line in `ITEM_UPDATER_NAMES`, plus its `update_item`. Anything we don't recognise stays a `NormalItemUpdater`. This makes the change easy, so we can make the easy change.
 
 ### 7. What `GildedRose` looks like now
 
@@ -343,23 +341,23 @@ ruby/
   updaters/
     item_updater_factory.rb           ItemUpdaterFactory
     item_updater.rb                   ItemUpdater
-    normal_item.rb                    NormalItem
-    conjured.rb                       Conjured
-    aged_brie.rb                      AgedBrie
-    backstage_passes.rb               BackstagePasses
-    sulfuras.rb                       Sulfuras
+    normal_item_updater.rb            NormalItemUpdater
+    conjured_updater.rb               ConjuredUpdater
+    aged_brie_updater.rb              AgedBrieUpdater
+    backstage_passes_updater.rb       BackstagePassesUpdater
+    sulfuras_updater.rb               SulfurasUpdater
 ```
 
-`GildedRose` is still the entry point. It keeps the `Item` records and asks `ItemUpdaterFactory` for a handler. The factory wraps the existing `Item` in `AgedBrie`, `BackstagePasses`, `Sulfuras`, `Conjured`, or `NormalItem`. Those handlers inherit `ItemUpdater`, which holds the shared sell-in and quality steps. Each handler's `update_item` changes the `Item` it was given.
+`GildedRose` is still the entry point. It keeps the `Item` records and asks `ItemUpdaterFactory` for a handler. The factory wraps the existing `Item` in `AgedBrieUpdater`, `BackstagePassesUpdater`, `SulfurasUpdater`, `ConjuredUpdater`, or `NormalItemUpdater`. Those handlers inherit `ItemUpdater`, which holds the shared sell-in and quality steps. Each handler's `update_item` changes the `Item` it was given.
 
 ```
 GildedRose#update_quality
   └── ItemUpdaterFactory.build(item)
-        ├── "Aged Brie"                                  → AgedBrie
-        ├── "Backstage passes to a TAFKAL80ETC concert"  → BackstagePasses
-        ├── "Sulfuras, Hand of Ragnaros"                 → Sulfuras
-        ├── "Conjured *"                                 → Conjured
-        └── any other name                               → NormalItem
+        ├── "Aged Brie"                                  → AgedBrieUpdater
+        ├── "Backstage passes to a TAFKAL80ETC concert"  → BackstagePassesUpdater
+        ├── "Sulfuras, Hand of Ragnaros"                 → SulfurasUpdater
+        ├── "Conjured *"                                 → ConjuredUpdater
+        └── any other name                               → NormalItemUpdater
               └── each is an ItemUpdater, wrapping the original Item
 ```
 
@@ -372,7 +370,7 @@ This is the easy change the whole refactor was setting up. Adding a Conjured ite
 The conjured items degrade twice as fast as a normal item, 2 before the sell date and 4 after it, and `GildedRose` doesn't have to know that.
 
 ```ruby
-class Conjured < ItemUpdater
+class ConjuredUpdater < ItemUpdater
   QUALITY_DECREMENT = 2
   QUALITY_DECREMENT_ON_EXPIRATION = 4
 
@@ -385,16 +383,16 @@ class Conjured < ItemUpdater
 end
 ```
 
-In the factory, the hash of item names stays as it was. The new part is the `fetch` default. A missing name that starts with `"Conjured"` uses the handler above, so `"Conjured Mana Cake"` and `"Conjured Dark Blade"` both degrade twice as fast. Anything else is still a `NormalItem`.
+In the factory, the hash of item names stays as it was. The new part is the `fetch` default. A missing name that starts with `"Conjured"` uses the handler above, so `"Conjured Mana Cake"` and `"Conjured Dark Blade"` both degrade twice as fast. Anything else is still a `NormalItemUpdater`.
 
 ```ruby
 CONJURED_PREFIX = "Conjured"
 
 def self.build(item)
   ITEM_UPDATER_NAMES.fetch(item.name) {
-    item.name.start_with?(CONJURED_PREFIX) ? Conjured : NormalItem
+    item.name.start_with?(CONJURED_PREFIX) ? ConjuredUpdater : NormalItemUpdater
   }.new(item)
 end
 ```
 
-The tests pass, and `GildedRose` stays as it was. The name string is still how an item picks its rule. Exact names stay in the hash. Conjured is the prefix, because the requirement covers the whole category. The new class lives at `updaters/conjured.rb`.
+The tests pass, and `GildedRose` stays as it was. The name string is still how an item picks its rule. Exact names stay in the hash. Conjured is the prefix, because the requirement covers the whole category. The new class lives at `updaters/conjured_updater.rb`.
